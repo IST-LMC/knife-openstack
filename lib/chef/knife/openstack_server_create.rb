@@ -143,6 +143,9 @@ class Chef
       rescue Errno::EHOSTUNREACH
         sleep 2
         false
+      rescue SocketError => e
+        sleep 2
+        false
       ensure
         tcp_socket && tcp_socket.close
       end
