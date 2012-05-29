@@ -76,6 +76,7 @@ class Chef
         :short => "-x USERNAME",
         :long => "--ssh-user USERNAME",
         :description => "The ssh username",
+        :proc => Proc.new { |user| Chef::Config[:knife][:ssh_user] = user },
         :default => "root"
 
       option :ssh_password,
@@ -123,12 +124,41 @@ class Chef
         :boolean => true,
         :default => false
 
+      option :ssh_gateway,
+        :short => "-G GATEWAY",
+        :long => "--ssh-gateway GATEWAY",
+        :description => "The ssh gateway",
+        :proc => Proc.new { |g| Chef::Config[:knife][:ssh_gateway] = g },
+        :default => nil
+
       def tcp_test_ssh(hostname)
-        tcp_socket = TCPSocket.new(hostname, 22)
-        readable = IO.select([tcp_socket], nil, nil, 5)
+        tcp_socket = nil
+        readable = false
+
+        # Initialize the SSH gateway if it has been specified in knife.rb
+        ensure_configured_gateway
+
+        if @default_gateway
+          # Shuts down the local port after the block is run
+          @default_gateway.open(hostname, 22) do |port|
+            tcp_socket = TCPSocket.new('127.0.0.1', port)
+            readable = IO.select([tcp_socket], nil, nil, 5)
+          end
+        else
+          tcp_socket = TCPSocket.new(hostname, 22)
+          readable = IO.select([tcp_socket], nil, nil, 5)
+        end
+        
         if readable
-          Chef::Log.debug("sshd accepting connections on #{hostname}, banner is #{tcp_socket.gets}")
+          gateway_info = @default_gateway ? " via gateway: #{locate_config_value(:ssh_gateway)}" : ""
+          Chef::Log.debug("sshd accepting connections on #{hostname}#{gateway_info}, banner is #{tcp_socket.gets}")
+          
+          # Need to do this before the yield block so that we don't shut the potential gateway connection down 
+          # partway through. If using a gateway, it will ensure that the local port is shut down.
+          tcp_socket && tcp_socket.shutdown rescue nil unless @default_gateway
+
           yield
+
           true
         else
           false
@@ -147,7 +177,18 @@ class Chef
         sleep 2
         false
       ensure
-        tcp_socket && tcp_socket.close
+        tcp_socket && tcp_socket.shutdown rescue nil unless @default_gateway
+      end
+
+      def ensure_configured_gateway
+        gateway_config = locate_config_value(:ssh_gateway)
+        if gateway_config && !@default_gateway
+          gw_host, gw_user = gateway_config.split('@').reverse
+          gw_host, gw_port = gw_host.split(':')
+          gw_opts = gw_port ? { :port => gw_port } : {}
+
+          @default_gateway = Net::SSH::Gateway.new(gw_host, gw_user || locate_config_value(:ssh_user), gw_opts)
+        end
       end
 
       def run
@@ -216,19 +257,21 @@ class Chef
         msg_pair("Private IP Address", server.private_ip_address)
         msg_pair("Environment", config[:environment] || '_default')
         msg_pair("Run List", config[:run_list].join(', '))
+
+        @default_gateway.shutdown! if @default_gateway.active?
       end
 
       def bootstrap_for_node(server)
         bootstrap = Chef::Knife::Bootstrap.new
         bootstrap.name_args = [server.dns_name]
         bootstrap.config[:run_list] = config[:run_list]
-        bootstrap.config[:ssh_user] = config[:ssh_user]
+        bootstrap.config[:ssh_user] = locate_config_value(:ssh_user)
         bootstrap.config[:identity_file] = config[:identity_file]
         bootstrap.config[:chef_node_name] = config[:chef_node_name] || server.id
         bootstrap.config[:prerelease] = config[:prerelease]
         bootstrap.config[:bootstrap_version] = locate_config_value(:bootstrap_version)
         bootstrap.config[:distro] = locate_config_value(:distro)
-        bootstrap.config[:use_sudo] = true unless config[:ssh_user] == 'root'
+        bootstrap.config[:use_sudo] = true unless locate_config_value(:ssh_user) == 'root'
         bootstrap.config[:template_file] = locate_config_value(:template_file)
         bootstrap.config[:environment] = config[:environment]
         # may be needed for vpc_mode
