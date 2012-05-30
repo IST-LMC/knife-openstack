@@ -155,7 +155,9 @@ class Chef
           
           # Need to do this before the yield block so that we don't shut the potential gateway connection down 
           # partway through. If using a gateway, it will ensure that the local port is shut down.
-          tcp_socket && tcp_socket.shutdown rescue nil unless @default_gateway
+          unless @default_gateway
+            tcp_socket && tcp_socket.shutdown rescue nil
+          end
 
           yield
 
@@ -177,7 +179,9 @@ class Chef
         sleep 2
         false
       ensure
-        tcp_socket && tcp_socket.shutdown rescue nil unless @default_gateway
+        unless @default_gateway
+          tcp_socket && tcp_socket.shutdown rescue nil
+        end
       end
 
       def ensure_configured_gateway
@@ -240,8 +244,20 @@ class Chef
           sleep @initial_sleep_delay ||= 10
           puts("done")
         }
-
-        bootstrap_for_node(server).run
+        
+        bootstrap_retries = 3
+        begin
+          bootstrap_for_node(server).run
+        rescue Net::SSH::Disconnect => e
+          bootstrap_retries -= 1
+          if bootstrap_retries >= 0
+            puts "disconnected... retrying bootstrap (attempts left: #{bootstrap_retries})"
+            sleep 5
+            retry
+          else
+            raise e
+          end
+        end
 
         puts "\n"
         msg_pair("Instance ID", server.id)
