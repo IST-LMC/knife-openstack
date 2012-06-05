@@ -134,24 +134,39 @@ class Chef
       def tcp_test_ssh(hostname)
         tcp_socket = nil
         readable = false
+        banner = nil
 
         # Initialize the SSH gateway if it has been specified in knife.rb
         ensure_configured_gateway
 
         if @default_gateway
           # Shuts down the local port after the block is run
-          @default_gateway.open(hostname, 22) do |port|
-            tcp_socket = TCPSocket.new('127.0.0.1', port)
-            readable = IO.select([tcp_socket], nil, nil, 5)
+          begin
+            Chef::Log.debug("ssh connecting... (#{hostname}, #{locate_config_value(:ssh_user)}, #{Chef::Config[:knife][:ssh_identity_file]})")
+            @default_gateway.ssh(hostname, locate_config_value(:ssh_user), :timeout => 5, :keys => [ Chef::Config[:knife][:ssh_identity_file] ]) do |ssh|
+              Chef::Log.debug("ssh connected: #{readable}")
+              readable = true
+            end
+          rescue Net::SSH::Disconnect => e
+            @default_gateway = nil
+            ensure_configured_gateway
+            Chef::Log.debug("ssh disconnected: #{e}")
+            sleep 2
+            return false
+          rescue Timeout::Error => e
+            Chef::Log.debug("ssh disconnected: #{e}")
+            sleep 2
+            return false
           end
         else
           tcp_socket = TCPSocket.new(hostname, 22)
           readable = IO.select([tcp_socket], nil, nil, 5)
+          banner = tcp_socket.gets if readable
         end
         
         if readable
           gateway_info = @default_gateway ? " via gateway: #{locate_config_value(:ssh_gateway)}" : ""
-          Chef::Log.debug("sshd accepting connections on #{hostname}#{gateway_info}, banner is #{tcp_socket.gets}")
+          Chef::Log.debug("sshd accepting connections on #{hostname}#{gateway_info}, banner is #{banner}")
           
           # Need to do this before the yield block so that we don't shut the potential gateway connection down 
           # partway through. If using a gateway, it will ensure that the local port is shut down.
