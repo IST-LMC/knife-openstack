@@ -148,6 +148,15 @@ class Chef
               readable = true
             end
           rescue Net::SSH::Disconnect => e
+            # TODO: Make this a lot more elegant
+            #
+            # The gateway gets messed up in this case, but if we do connect via ssh, we guarantee that the connection's good...
+            # So really, we should be establishing the gateway, doing the check, and shutting it down every time. And all that's
+            # probably best done in a gateway_test_ssh method, separate from this one.
+            #
+            # The one downside is that we may give misleading error messages when ssh keys, etc. are bad, because the TCP socket
+            # method does not require them and explicitly tests the connection. The problem with it is that it's not good at
+            # indicating connection problems through the gateway.
             @default_gateway = nil
             ensure_configured_gateway
             Chef::Log.debug("ssh disconnected: #{e}")
