@@ -246,13 +246,15 @@ class Chef
         }
         
         bootstrap_retries = 3
+        sleep_time = 5
         begin
           bootstrap_for_node(server).run
         rescue Net::SSH::Disconnect => e
           bootstrap_retries -= 1
           if bootstrap_retries >= 0
             puts "disconnected... retrying bootstrap (attempts left: #{bootstrap_retries})"
-            sleep 5
+            sleep(sleep_time)
+            sleep_time = sleep_time * 2
             retry
           else
             raise e
