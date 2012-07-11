@@ -64,7 +64,7 @@ class Chef
 
         @name_args.each do |instance_id|
           begin
-            server = connection.servers.get(instance_id)
+            server = connection.servers.get(instance_id) || connection.servers.find { |s| s.name == instance_id }
 
             msg_pair("Instance ID", server.id)
             msg_pair("Instance Name", server.name)
