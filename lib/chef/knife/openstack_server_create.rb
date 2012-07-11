@@ -132,11 +132,35 @@ class Chef
       :default => true
 
       def tcp_test_ssh(hostname)
-        tcp_socket = TCPSocket.new(hostname, 22)
-        readable = IO.select([tcp_socket], nil, nil, 5)
+        tcp_socket = nil
+        readable = false
+
+        # Initialize the SSH gateway if it has been specified in knife.rb
+        ensure_configured_gateway
+
+        if @default_gateway
+          # Shuts down the local port after the block is run
+          @default_gateway.open(hostname, 22) do |port|
+            tcp_socket = TCPSocket.new('127.0.0.1', port)
+            readable = IO.select([tcp_socket], nil, nil, 5)
+          end
+        else
+          tcp_socket = TCPSocket.new(hostname, 22)
+          readable = IO.select([tcp_socket], nil, nil, 5)
+        end
+        
         if readable
-          Chef::Log.debug("sshd accepting connections on #{hostname}, banner is #{tcp_socket.gets}")
+          gateway_info = @default_gateway ? " via gateway: #{locate_config_value(:ssh_gateway)}" : ""
+          Chef::Log.debug("sshd accepting connections on #{hostname}#{gateway_info}, banner is #{tcp_socket.gets}")
+          
+          # Need to do this before the yield block so that we don't shut the potential gateway connection down 
+          # partway through. If using a gateway, it will ensure that the local port is shut down.
+          unless @default_gateway
+            tcp_socket && tcp_socket.shutdown rescue nil
+          end
+
           yield
+
           true
         else
           false
@@ -155,7 +179,20 @@ class Chef
         sleep 2
         false
       ensure
-        tcp_socket && tcp_socket.close
+        unless @default_gateway
+          tcp_socket && tcp_socket.shutdown rescue nil
+        end
+      end
+
+      def ensure_configured_gateway
+        gateway_config = locate_config_value(:ssh_gateway)
+        if gateway_config && !@default_gateway
+          gw_host, gw_user = gateway_config.split('@').reverse
+          gw_host, gw_port = gw_host.split(':')
+          gw_opts = gw_port ? { :port => gw_port } : {}
+
+          @default_gateway = Net::SSH::Gateway.new(gw_host, gw_user || locate_config_value(:ssh_user), gw_opts)
+        end
       end
 
       def run
