@@ -52,11 +52,11 @@ module Fog
     class OpenStack
       class Server < Fog::Compute::Server
         def public_ip_address
-          addresses.values.first.find { |x| x['addr'] !~ /^10\..*$/ }
+          addresses.values.first.find { |x| x['addr'] !~ /^10\..*$/ } || {}
         end
 
         def private_ip_address
-          addresses.values.first.find { |x| x['addr'] =~ /^10\..*$/ }
+          addresses.values.first.find { |x| x['addr'] =~ /^10\..*$/ } || {}
         end
       end
     end
