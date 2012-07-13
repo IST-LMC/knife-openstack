@@ -269,7 +269,7 @@ class Chef
 
       #which IP address to bootstrap
       bootstrap_ip_address = server.public_ip_address['addr'] if server.public_ip_address
-      if config[:private_network]
+      if locate_config_value(:private_network)
         bootstrap_ip_address = server.private_ip_address['addr']
       end
       Chef::Log.debug("Bootstrap IP Address #{bootstrap_ip_address}")
