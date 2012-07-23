@@ -1,4 +1,5 @@
 require 'chef/knife'
+require 'chef/knife/ssh'
 require 'fog'
 require 'fog/compute/models/server'
 require 'fog/openstack/models/compute/server'
