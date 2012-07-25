@@ -77,7 +77,7 @@ class Chef
 
       def locate_config_value(key)
         key = key.to_sym
-        config[key] || Chef::Config[:knife][key]
+        command_line_config[key] || Chef::Config[:knife][key] || config[key]
       end
 
       def msg_pair(label, value, color=:cyan)
@@ -101,6 +101,37 @@ class Chef
         end
       end
 
+
+      def command_line_config
+        if !@command_line_config
+          @command_line_config = {}
+
+          alt_regex = /\[(.*)\]/
+          options.each do |opt_name, opt_def|
+            boolean_value = nil
+            arg_index = nil
+
+            if opt_def[:long]
+              arg_index = ARGV.index(opt_def[:long].split(/\s/).first.gsub(alt_regex,''))
+              if arg_index
+                boolean_value = true
+              else
+                arg_index = ARGV.index(opt_def[:long].split(/\s/).first.gsub(alt_regex,'\1')) if opt_def[:long]
+                boolean_value = false
+              end
+            else
+              arg_index = ARGV.index(opt_def[:short].split(/\s/).first) if opt_def[:short]
+            end
+
+            if arg_index
+              opt_value = opt_def[:boolean] ? boolean_value : ARGV[arg_index + 1]
+              @command_line_config[opt_name] = opt_value
+              Chef::Log.debug("***command line override*** #{opt_name}: #{opt_value}")
+            end
+          end
+        end
+        @command_line_config
+      end
     end
   end
 end
