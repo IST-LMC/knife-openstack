@@ -285,8 +285,20 @@ class Chef
         puts("done")
       }
 
-      bootstrap_for_node(server, bootstrap_ip_address).run
-
+      retries = 10
+      begin
+        bootstrap_for_node(server, bootstrap_ip_address).run
+      rescue Net::SSH::Disconnect => connection_error
+        puts "Caught Net::SSH::Disconnect => #{connection_error}"
+        if (retries -= 1) > 0
+          puts "Retrying bootstrap (attempts left: #{retries})"
+          sleep 2
+          retry
+        else
+          raise connection_error
+        end
+      end
+        
       puts "\n"
       msg_pair("Instance Name", server.name)
       msg_pair("Instance ID", server.id)
