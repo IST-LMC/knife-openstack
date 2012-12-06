@@ -213,8 +213,8 @@ class Chef
 
         server_def = {
         :name => node_name,
-        :image_ref => locate_config_value(:image),
-        :flavor_ref => locate_config_value(:flavor),
+        :image_ref => image_ref,
+        :flavor_ref => flavor_ref,
         # :security_group => locate_config_value(:security_groups),
         :key_name => Chef::Config[:knife][:openstack_ssh_key_id],
         :personality => [{
@@ -330,7 +330,29 @@ class Chef
     end
 
     def ami
-      @ami ||= connection.images.get(locate_config_value(:image))
+      @ami ||= connection.images.get(image_ref)
+    end
+
+    def image_ref
+      @image_ref ||= begin
+        ref_id = locate_config_value(:image)
+        if ref_id =~ /^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$/
+          ref_id
+        else
+          connection.images.find { |f| f.name == ref_id }.id
+        end
+      end
+    end
+
+    def flavor_ref
+      @flavor_ref ||= begin
+        ref_id = locate_config_value(:flavor)
+        if ref_id =~ /^\d+$/
+          ref_id
+        else
+          connection.flavors.find { |f| f.name == ref_id }.id.to_i
+        end
+      end
     end
 
     def validate!
