@@ -347,7 +347,7 @@ class Chef
     def flavor_ref
       @flavor_ref ||= begin
         ref_id = locate_config_value(:flavor)
-        if ref_id =~ /^\d+$/
+        if ref_id.kind_of?(Integer) || ref_id =~ /^\d+$/
           ref_id
         else
           connection.flavors.find { |f| f.name == ref_id }.id.to_i
