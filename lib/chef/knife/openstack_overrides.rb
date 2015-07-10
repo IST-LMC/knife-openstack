@@ -45,45 +45,49 @@ module Fog
   end
 end
 
-# Add functionality which allows us to pass along the OpenStack environment that's set up
-# via the knife.rb configuration and set it as environment variables that live only for
-# the scope of the knife ssh or knife bootstrap run (unless one of those starts chef-client
-# in a periodic daemonized mode).
+# Grab the --pass-openstack-environment option from the command line if it's there,
+# and set that on Chef::Config[:knife] so that we can access it in our redefinition
+# of Net::SSH.configuration_for below.
 class Chef
   class Knife
-    class Ssh < Knife      
+    class Ssh < Knife
       option :pass_openstack_environment,
         :long => "--pass-openstack-environment",
         :description => "Pass the openstack environment (defined in your knife.rb) along as environment variables when running chef-client through knife ssh",
         :boolean => true,
         :default => false
-      
+
       if !method_defined?(:ssh_command_with_environment_variables)
         def ssh_command_with_environment_variables(command, subsession=nil)
-          pass_openstack_environment = config[:pass_openstack_environment] || Chef::Config[:knife][:pass_openstack_environment]
-          if !pass_openstack_environment
-            ssh_command_without_environment_variables(command, subsession)
+          Chef::Config[:knife][:pass_openstack_environment] = if config[:pass_openstack_environment]
+            config[:pass_openstack_environment]
           else
-            environment_settings = [
-              "OS_PASSWORD=#{Chef::Config[:knife][:openstack_password]}",
-              "OS_AUTH_URL=#{Chef::Config[:knife][:openstack_auth_url]}",
-              "OS_USERNAME=#{Chef::Config[:knife][:openstack_username]}",
-              "OS_TENANT_NAME=#{Chef::Config[:knife][:openstack_tenant]}"
-            ]
-
-            # Bootstrap calls will run as the root user with this command, and the chef-client call is made
-            # inside the bootstrap script, so we want to export the environment variables for that.
-            augmented_command = environment_settings.map { | env_setting | "export #{env_setting}; " }.join
-            # Regular knife ssh calls from the command line may not start out as the root user and instead
-            # sudo the chef-client command. In this case, make sure to make settings that will be picked up
-            # by ruby before any call.
-            augmented_command += command.gsub("chef-client", "#{environment_settings.join(' ')} chef-client")
-          
-            ssh_command_without_environment_variables(augmented_command, subsession)
+            Chef::Config[:knife][:pass_openstack_environment]
           end
+          ssh_command_without_environment_variables(command, subsession)
         end
         alias_method :ssh_command_without_environment_variables, :ssh_command
         alias_method :ssh_command, :ssh_command_with_environment_variables
+      end
+    end
+  end
+end
+
+# Add OS_* to the SendEnv ssh option if we've turned on the knife option to pass
+# the OpenStack environment.
+module Net
+  module SSH
+    class << self
+      if !method_defined?(:configuration_for_with_environment_variables)
+        def configuration_for_with_environment_variables(host, use_ssh_config=true)
+          ssh_config = configuration_for_without_environment_variables(host, use_ssh_config)
+          if Chef::Config[:knife][:pass_openstack_environment]
+            ssh_config[:send_env] = ssh_config[:send_env] + [/^OS_.*$/]
+          end
+          ssh_config
+        end
+        alias_method :configuration_for_without_environment_variables, :configuration_for
+        alias_method :configuration_for, :configuration_for_with_environment_variables
       end
     end
   end
