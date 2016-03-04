@@ -73,6 +73,8 @@ class Chef
   end
 end
 
+require 'net/ssh'
+
 # Add OS_* to the SendEnv ssh option if we've turned on the knife option to pass
 # the OpenStack environment.
 module Net
