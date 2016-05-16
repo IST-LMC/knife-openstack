@@ -49,12 +49,12 @@ class Chef
       :description => "The image ID for the server",
       :proc => Proc.new { |i| Chef::Config[:knife][:image] = i }
 
-      # option :security_groups,
-      # :short => "-G X,Y,Z",
-      # :long => "--groups X,Y,Z",
-      # :description => "The security groups for this server",
-      # :default => ["default"],
-      # :proc => Proc.new { |groups| groups.split(',') }
+      option :openstack_security_groups,
+      :short => "-G X,Y,Z",
+      :long => "--openstack-groups X,Y,Z",
+      :description => "The security groups for this server",
+      :default => ["default"],
+      :proc => Proc.new { |groups| groups.split(',') }
 
       option :chef_node_name,
       :short => "-N NAME",
@@ -215,7 +215,7 @@ class Chef
         :name => node_name,
         :image_ref => image_ref,
         :flavor_ref => flavor_ref,
-        # :security_group => locate_config_value(:security_groups),
+        :security_groups => locate_config_value(:openstack_security_groups),
         :key_name => Chef::Config[:knife][:openstack_ssh_key_id],
         :personality => [{
             "path" => "/etc/chef/ohai/hints/openstack.json",
@@ -232,7 +232,7 @@ class Chef
 
       msg_pair("Instance Name", server.name)
       msg_pair("Instance ID", server.id)
-      # msg_pair("Security Groups", server.groups.join(", "))
+      msg_pair("Security Groups", server.security_groups.map { |g| g.name }.join(", "))
       msg_pair("SSH Keypair", server.key_name)
 
       print "\n#{ui.color("Waiting for server", :magenta)}"
@@ -304,7 +304,7 @@ class Chef
       msg_pair("Instance ID", server.id)
       msg_pair("Flavor", server.flavor['id'])
       msg_pair("Image", server.image['id'])
-      # msg_pair("Security Groups", server.groups.join(", "))
+      msg_pair("Security Groups", server.security_groups.map { |sg| sg.name }.join(", "))
       msg_pair("SSH Keypair", server.key_name)
       msg_pair("Public IP Address", server.public_ip_address['addr']) if server.public_ip_address
       msg_pair("Private IP Address", server.private_ip_address['addr'])
